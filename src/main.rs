@@ -2,7 +2,19 @@ use futures_util::StreamExt;
 use once_cell::sync::Lazy;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
-use zbus::{dbus_proxy, Connection, Result, zvariant::OwnedValue};
+use zbus::{dbus_proxy, zvariant::OwnedValue, Connection, Result};
+
+use zbus::zvariant::OwnedObjectPath;
+
+#[allow(unused)]
+#[derive(Debug)]
+pub struct Metadata {
+    mpris_trackid: OwnedObjectPath,
+    mpris_arturl: String,
+    xesam_title: String,
+    xesam_album: String,
+    xesam_artist: Vec<String>,
+}
 
 static MPIRS_CONNECTIONS: Lazy<Arc<Mutex<Vec<String>>>> =
     Lazy::new(|| Arc::new(Mutex::new(Vec::new())));
@@ -45,9 +57,9 @@ trait FreedestopDBus {
 trait MediaPlayer2Dbus {
     #[dbus_proxy(property)]
     fn can_pause(&self) -> Result<bool>;
+
     #[dbus_proxy(property)]
     fn metadata(&self) -> Result<HashMap<String, OwnedValue>>;
-    // add code here
 }
 
 #[tokio::main]
@@ -67,11 +79,35 @@ async fn main() -> Result<()> {
             .unwrap()
             .build()
             .await?;
-        println!("{:?}", instance.metadata().await?);
-    }
-    set_mpirs_connection(names).await;
 
-    println!("Hello, world!");
+        let value = instance.metadata().await?;
+
+        let art_url = &value["mpris:artUrl"];
+        let mpris_arturl: String = art_url.clone().try_into().unwrap();
+
+        let trackid = &value["mpris:trackid"];
+        let mpris_trackid: OwnedObjectPath = trackid.clone().try_into().unwrap();
+
+        let title = &value["xesam:title"];
+        let xesam_title: String = title.clone().try_into().unwrap();
+
+        let artist = &value["xesam:artist"];
+        let xesam_artist: Vec<String> = artist.clone().try_into().unwrap();
+
+        let album = &value["xesam:album"];
+        let xesam_album: String = album.clone().try_into().unwrap();
+
+        let data = Metadata {
+            mpris_trackid,
+            xesam_title,
+            xesam_artist,
+            xesam_album,
+            mpris_arturl,
+        };
+        println!("{data:?}");
+    }
+
+    set_mpirs_connection(names).await;
 
     let mut namechangesignal = freedesktop.receive_name_owner_changed().await?;
 

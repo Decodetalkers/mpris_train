@@ -1,0 +1,7 @@
+{
+	"xesam:title": OwnedValue(Str(Str(Owned("Beat Hit!")))),
+	"xesam:artist": OwnedValue(Array(Array { element_signature: Signature("s"), elements: [Str(Str(Owned("Blue Toad")))], signature: Signature("as") })),
+	"mpris:artUrl": OwnedValue(Str(Str(Owned("file:///xxx/firefox/firefox-mpris/19490_1.png")))),
+	"mpris:trackid": OwnedValue(ObjectPath(ObjectPath("/org/mpris/MediaPlayer2/firefox"))),
+	"xesam:album": OwnedValue(Str(Str(Owned(""))))
+}
