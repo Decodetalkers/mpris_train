@@ -2,7 +2,8 @@ use futures_util::StreamExt;
 use once_cell::sync::Lazy;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
-use zbus::{dbus_proxy, zvariant::OwnedValue, Connection, Result};
+use zbus::proxy;
+use zbus::{zvariant::OwnedValue, Connection, Result};
 
 use zbus::zvariant::OwnedObjectPath;
 
@@ -39,26 +40,31 @@ async fn remove_mpirs_connection<T: ToString>(conn: T) {
     conns.retain(|iter| iter != &conn.to_string());
 }
 
-#[dbus_proxy(
+#[proxy(
     default_service = "org.freedesktop.DBus",
     interface = "org.freedesktop.DBus",
     default_path = "/org/freedesktop/DBus"
 )]
 trait FreedestopDBus {
-    #[dbus_proxy(signal)]
-    fn name_owner_changed(&self) -> Result<(String, String, String)>;
+    #[zbus(signal)]
+    fn name_owner_changed(
+        &self,
+        name: String,
+        new_owner: String,
+        older_owner: String,
+    ) -> Result<()>;
     fn list_names(&self) -> Result<Vec<String>>;
 }
 
-#[dbus_proxy(
+#[proxy(
     interface = "org.mpris.MediaPlayer2.Player",
     default_path = "/org/mpris/MediaPlayer2"
 )]
 trait MediaPlayer2Dbus {
-    #[dbus_proxy(property)]
+    #[zbus(property)]
     fn can_pause(&self) -> Result<bool>;
 
-    #[dbus_proxy(property)]
+    #[zbus(property)]
     fn metadata(&self) -> Result<HashMap<String, OwnedValue>>;
 }
 
@@ -80,22 +86,22 @@ async fn main() -> Result<()> {
             .build()
             .await?;
 
-        let value = instance.metadata().await?;
+        let mut value = instance.metadata().await?;
 
-        let art_url = &value["mpris:artUrl"];
-        let mpris_arturl: String = art_url.clone().try_into().unwrap();
+        let art_url = value.remove("mpris:artUrl").unwrap();
+        let mpris_arturl: String = art_url.try_into().unwrap();
 
-        let trackid = &value["mpris:trackid"];
-        let mpris_trackid: OwnedObjectPath = trackid.clone().try_into().unwrap();
+        let trackid = value.remove("mpris:trackid").unwrap();
+        let mpris_trackid: OwnedObjectPath = trackid.try_into().unwrap();
 
-        let title = &value["xesam:title"];
-        let xesam_title: String = title.clone().try_into().unwrap();
+        let title = value.remove("xesam:title").unwrap();
+        let xesam_title: String = title.try_into().unwrap();
 
-        let artist = &value["xesam:artist"];
-        let xesam_artist: Vec<String> = artist.clone().try_into().unwrap();
+        let artist = value.remove("xesam:artist").unwrap();
+        let xesam_artist: Vec<String> = artist.try_into().unwrap();
 
-        let album = &value["xesam:album"];
-        let xesam_album: String = album.clone().try_into().unwrap();
+        let album = value.remove("xesam:album").unwrap();
+        let xesam_album: String = album.try_into().unwrap();
 
         let data = Metadata {
             mpris_trackid,
@@ -112,7 +118,12 @@ async fn main() -> Result<()> {
     let mut namechangesignal = freedesktop.receive_name_owner_changed().await?;
 
     while let Some(signal) = namechangesignal.next().await {
-        let (interfacename, added, removed): (String, String, String) = signal.body().unwrap();
+        let NameOwnerChangedArgs {
+            name: interfacename,
+            older_owner: removed,
+            new_owner: added,
+            ..
+        } = signal.args()?;
         if !interfacename.starts_with("org.mpris.MediaPlayer2") {
             continue;
         }
