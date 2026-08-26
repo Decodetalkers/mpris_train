@@ -3,18 +3,30 @@ use once_cell::sync::Lazy;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 use zbus::proxy;
-use zbus::{zvariant::OwnedValue, Connection, Result};
+use zbus::{Connection, Result};
 
+use serde::{Deserialize, Serialize};
 use zbus::zvariant::OwnedObjectPath;
+use zbus::zvariant::{
+    as_value::{self},
+    OwnedValue, Type,
+};
 
-#[allow(unused)]
-#[derive(Debug)]
+#[derive(Deserialize, Serialize, Type, Debug, OwnedValue)]
+#[zvariant(signature = "a{sv}")]
 pub struct Metadata {
+    #[serde(rename = "mpris:trackid", with = "as_value")]
     mpris_trackid: OwnedObjectPath,
+    #[serde(rename = "mpris:artUrl", with = "as_value")]
     mpris_arturl: String,
+    #[serde(rename = "xesam:title", with = "as_value")]
     xesam_title: String,
+    #[serde(rename = "xesam:album", with = "as_value")]
     xesam_album: String,
+    #[serde(rename = "xesam:artist", with = "as_value")]
     xesam_artist: Vec<String>,
+    #[serde(flatten, with = "as_value")]
+    the_rest: HashMap<String, OwnedValue>,
 }
 
 static MPIRS_CONNECTIONS: Lazy<Arc<Mutex<Vec<String>>>> =
@@ -65,7 +77,7 @@ trait MediaPlayer2Dbus {
     fn can_pause(&self) -> Result<bool>;
 
     #[zbus(property)]
-    fn metadata(&self) -> Result<HashMap<String, OwnedValue>>;
+    fn metadata(&self) -> Result<Metadata>;
 }
 
 #[tokio::main]
@@ -78,7 +90,6 @@ async fn main() -> Result<()> {
         .filter(|name| name.starts_with("org.mpris.MediaPlayer2"))
         .cloned()
         .collect();
-    println!("{names:?}");
     for name in names.iter() {
         let instance = MediaPlayer2DbusProxy::builder(&conn)
             .destination(name.as_str())
@@ -86,30 +97,9 @@ async fn main() -> Result<()> {
             .build()
             .await?;
 
-        let mut value = instance.metadata().await?;
+        println!("{name:?}");
+        let data = instance.metadata().await?;
 
-        let art_url = value.remove("mpris:artUrl").unwrap();
-        let mpris_arturl: String = art_url.try_into().unwrap();
-
-        let trackid = value.remove("mpris:trackid").unwrap();
-        let mpris_trackid: OwnedObjectPath = trackid.try_into().unwrap();
-
-        let title = value.remove("xesam:title").unwrap();
-        let xesam_title: String = title.try_into().unwrap();
-
-        let artist = value.remove("xesam:artist").unwrap();
-        let xesam_artist: Vec<String> = artist.try_into().unwrap();
-
-        let album = value.remove("xesam:album").unwrap();
-        let xesam_album: String = album.try_into().unwrap();
-
-        let data = Metadata {
-            mpris_trackid,
-            xesam_title,
-            xesam_artist,
-            xesam_album,
-            mpris_arturl,
-        };
         println!("{data:?}");
     }
 
